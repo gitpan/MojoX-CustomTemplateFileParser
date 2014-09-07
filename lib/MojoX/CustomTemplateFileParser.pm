@@ -3,7 +3,7 @@ package MojoX::CustomTemplateFileParser;
 use strict;
 use warnings;
 use 5.10.1;
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 use Mojo::Base -base;
 use Path::Tiny();
@@ -28,7 +28,7 @@ sub flatten {
     foreach my $test (@{ $info->{'tests'} }) {
         next TEST if !scalar @{ $test->{'lines_template'} };
 
-        my $expected_var = sprintf '$expected_%s' => $test->{'test_name'};
+        my $expected_var = sprintf '$expected_%s%s' => $test->{'test_name'}, ($test->{'loop_variable'} ? "_$test->{'loop_variable'}" : '');
 
         push @parsed => "#** test from $filename, line $test->{'test_start_line'}" . ($test->{'loop_variable'} ? ", loop: $test->{'loop_variable'}" : '');
         push @parsed => sprintf 'my %s = qq{ %s };' => $expected_var, join "\n" => @{ $test->{'lines_expected'} };
@@ -166,7 +166,7 @@ sub parse {
             next LINE;
         }
     }
-    push @{ $info->{'tests'} } => $test if scalar @{ $test->{'lines_template'} };
+
     $self->_add_test($info, $test);
 
     $self->structure($info);

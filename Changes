@@ -1,5 +1,8 @@
 Revision history for MojoX-CustomTemplateFileParser
 
+0.04  2014-09-07 21:16:41 CEST
+	- Fixed a bug where the last test in a file sometimes were generated twice
+
 0.03  2014-09-07 20:57:54 CEST
 	- Added support for ==test loop(var var2)== syntax to easily create
 	  similar tests where only one value is different

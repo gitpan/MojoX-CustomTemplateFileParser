@@ -32,6 +32,6 @@ resources:
   bugtracker: https://github.com/Csson/p5-mojox-customtemplatefileparser/issues
   homepage: https://github.com/Csson/p5-mojox-customtemplatefileparser
   repository: https://github.com/Csson/p5-mojox-customtemplatefileparser.git
-version: '0.03'
+version: '0.04'
 x_contributors:
   - 'Erik Carlsson <info@code301.com>'
