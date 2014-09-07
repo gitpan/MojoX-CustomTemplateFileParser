@@ -1,4 +1,8 @@
 Revision history for MojoX-CustomTemplateFileParser
 
+0.02  2014-09-07 16:42:25 CEST
+	- The test is skipped if the template part of a test is empty
+	- Skip test by using ==no test==
+
 0.01  2014-09-07 14:22:39 CEST
-        - Initial release
+    - Initial release

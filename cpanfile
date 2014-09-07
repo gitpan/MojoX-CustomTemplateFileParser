@@ -1,6 +1,6 @@
 requires 'perl', '5.010';
 
-requires 'Mojo::Base', '5.00';
+requires 'Mojolicious', '5.00';
 requires 'Path::Tiny', '0.050';
 
 on test => sub {

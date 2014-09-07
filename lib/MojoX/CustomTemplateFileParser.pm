@@ -3,7 +3,7 @@ package MojoX::CustomTemplateFileParser;
 use strict;
 use warnings;
 use 5.10.1;
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use Mojo::Base -base;
 use Path::Tiny();
@@ -23,10 +23,11 @@ sub flatten {
 
     my @parsed = join "\n" => @{ $info->{'head_lines'} };
 
-    my $testcount = 0;
+    TEST:
     foreach my $test (@{ $info->{'tests'} }) {
-        ++$testcount;
-        my $expected_var = sprintf '$expected_%s' => $testcount;
+        next TEST if !scalar @{ $test->{'lines_template'} };
+
+        my $expected_var = sprintf '$expected_%s' => $test->{'test_name'};
         push @parsed => sprintf 'my %s = qq{ %s };' => $expected_var, join "\n" => @{ $test->{'lines_expected'} };
 
         push @parsed => sprintf q{get '/%s' => '%s';} => $test->{'test_name'}, $test->{'test_name'};
@@ -37,7 +38,10 @@ sub flatten {
     push @parsed => 'done_testing();';
     push @parsed => '__DATA__';
 
+
     foreach my $test (@{ $info->{'tests'} }) {
+        next TEST if !scalar @{ $test->{'lines_template'} };
+
         push @parsed => sprintf '@@ %s.html.ep' => $test->{'test_name'};
         push @parsed => join "\n" => @{ $test->{'lines_template'} };
     }
@@ -50,7 +54,7 @@ sub parse {
     my $baseurl = $self->_get_baseurl;
     my @lines = split /\n/ => Path::Tiny::path($self->path)->slurp;
 
-    my $test_start = qr/==TEST(?: EXAMPLE)?(?: (\d+))?==/i;
+    my $test_start = qr/==(?:(NO) )?TEST(?: EXAMPLE)?(?: (\d+))?==/i;
     my $template_separator = '--t--';
     my $expected_separator = '--e--';
 
@@ -71,8 +75,16 @@ sub parse {
 
         if($environment eq 'head') {
             if($line =~ $test_start) {
+                my $skipit = $1;
+                my $testnumber = $2;
+
                 $test = $self->_reset_test();
-                $test->{'test_number'} = $1;
+
+                if(defined $skipit && $skipit eq lc 'no') {
+                    $test->{'skip'} = $skipit;
+                }
+
+                $test->{'test_number'} = $testnumber;
                 ++$testcount;
 
                 push @{ $info->{'head_lines'} } => '';
@@ -101,7 +113,10 @@ sub parse {
                 $environment = 'between';
                 next LINE;
             }
-            push @{ $test->{'lines_template'} } => $line;
+            # If we have no template lines, don't push empty lines.
+            # This way we can avoid empty templates, meaning we can leave empty test blocks in the
+            # source files without messing up the tests.
+            push @{ $test->{'lines_template'} } => $line if scalar @{ $test->{'lines_template'} } || $line !~ m{^\s*$};
             next LINE;
         }
         if($environment eq 'between') {
@@ -115,7 +130,6 @@ sub parse {
         }
         if($environment eq 'expected') {
             if($line eq $expected_separator) {
-                # No need to push empty line to the template
                 $environment = 'ending';
                 next LINE;
             }
@@ -125,7 +139,7 @@ sub parse {
         if($environment eq 'ending') {
             if($line =~ $test_start) {
                 push @{ $test->{'lines_after'} } => '';
-                push @{ $info->{'tests'} } => $test;
+                push @{ $info->{'tests'} } => $test if scalar @{ $test->{'lines_template'} };
                 $test = $self->_reset_test();
                 ++$testcount;
                 $test->{'test_start_line'} = $row;
@@ -139,7 +153,8 @@ sub parse {
             next LINE;
         }
     }
-    push @{ $info->{'tests'} } => $test;
+    push @{ $info->{'tests'} } => $test if scalar @{ $test->{'lines_template'} };
+    @{ $info->{'tests'} } = grep { !$_->{'skip'} } @{ $info->{'tests'} };
 
     $self->structure($info);
 
@@ -195,11 +210,11 @@ Unstable.
 
 =head1 DESCRIPTION
 
-MojoX::CustomTemplateFileParser parses files containing L<Mojo::Template>s mixed with the expected rendering.
+MojoX::CustomTemplateFileParser parses files containing L<Mojo::Templates|Mojo::Template> mixed with the expected rendering.
 
 The parsing creates a data structure that also can be dumped into a string ready to be put in a L<Test::More> file.
 
-It's purpose is to facilitate development of tag helpers.
+Its purpose is to facilitate development of tag helpers.
 
 =head2 Options
 
@@ -225,19 +240,29 @@ Given a file (C<metacpan-1.mojo>) that looks like this:
 
     ==test==
     --t--
-    %= link_to 'MetaCPAN', 'http://www.metacpan.org/'
+        %= link_to 'MetaCPAN', 'http://www.metacpan.org/'
     --t--
     --e--
-    <a href="http://www.metacpan.org/">MetaCPAN</a>
+        <a href="http://www.metacpan.org/">MetaCPAN</a>
     --e--
 
     ==test==
     --t--
-    %= text_field username => placeholder => 'Enter name'
+        %= text_field username => placeholder => 'Enter name'
     --t--
     --e--
-    <input name="username" placeholder="Enter name" type="text" />
+        <input name="username" placeholder="Enter name" type="text" />
     --e--
+
+    ==no test==
+    --t--
+        %= text_field username => placeholder => 'Not tested'
+    --t--
+    --e--
+        <input name="username" placeholder="Not tested" type="text" />
+    --e--
+
+(Note the C<no test> on the third test.)
 
 Running C<$self-E<gt>parse> will fill C<$self-E<gt>structure> with:
 
@@ -253,7 +278,7 @@ Running C<$self-E<gt>parse> will fill C<$self-E<gt>structure> with:
                         test_name => 'metacpan_1_1',
                         test_start_line => 4,
                         lines_before => [''],
-                        lines_template => [" %= link_to 'MetaCPAN', 'http://www.metacpan.org/" ],
+                        lines_template => [ "%= link_to 'MetaCPAN', 'http://www.metacpan.org/" ],
                         lines_between => [''],
                         lines_expected => [ '<a href="http://www.metacpan.org/">MetaCPAN</a>' ],
                         lines_after => ['',''],
