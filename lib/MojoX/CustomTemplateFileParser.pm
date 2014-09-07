@@ -3,10 +3,11 @@ package MojoX::CustomTemplateFileParser;
 use strict;
 use warnings;
 use 5.10.1;
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use Mojo::Base -base;
 use Path::Tiny();
+use Storable qw/dclone/;
 
 has path => undef;
 has structure => sub { { } };
@@ -28,11 +29,14 @@ sub flatten {
         next TEST if !scalar @{ $test->{'lines_template'} };
 
         my $expected_var = sprintf '$expected_%s' => $test->{'test_name'};
+
+        push @parsed => "#** test from $filename, line $test->{'test_start_line'}" . ($test->{'loop_variable'} ? ", loop: $test->{'loop_variable'}" : '');
         push @parsed => sprintf 'my %s = qq{ %s };' => $expected_var, join "\n" => @{ $test->{'lines_expected'} };
 
         push @parsed => sprintf q{get '/%s' => '%s';} => $test->{'test_name'}, $test->{'test_name'};
         push @parsed => sprintf q{$test->get_ok('/%s')->status_is(200)->trimmed_content_is(%s, '%s');}
-                                => $test->{'test_name'}, $expected_var, qq{Matched trimmed content in $filename, line $test->{'test_start_line'}};
+                                => $test->{'test_name'}, $expected_var, sprintf qq{Matched trimmed content in $filename, line $test->{'test_start_line'}%s}
+                                                                                => $test->{'loop_variable'} ? ", loop: $test->{'loop_variable'}" : '';
     }
 
     push @parsed => 'done_testing();';
@@ -54,7 +58,8 @@ sub parse {
     my $baseurl = $self->_get_baseurl;
     my @lines = split /\n/ => Path::Tiny::path($self->path)->slurp;
 
-    my $test_start = qr/==(?:(NO) )?TEST(?: EXAMPLE)?(?: (\d+))?==/i;
+    # matches ==test== ==no test== ==test loop(a thing or two)== ==test example ==test 1== ==test example 2==
+    my $test_start = qr/==(?:(NO) )?TEST(?: loop\(([^)]+)\))?(?: EXAMPLE)?(?: (\d+))?==/i;
     my $template_separator = '--t--';
     my $expected_separator = '--e--';
 
@@ -76,7 +81,8 @@ sub parse {
         if($environment eq 'head') {
             if($line =~ $test_start) {
                 my $skipit = $1;
-                my $testnumber = $2;
+                $test->{'loop'} = defined $2 ? [ split / / => $2 ] : [];
+                my $testnumber = $3;
 
                 $test = $self->_reset_test();
 
@@ -139,8 +145,15 @@ sub parse {
         if($environment eq 'ending') {
             if($line =~ $test_start) {
                 push @{ $test->{'lines_after'} } => '';
-                push @{ $info->{'tests'} } => $test if scalar @{ $test->{'lines_template'} };
+
+                $self->_add_test($info, $test);
+
                 $test = $self->_reset_test();
+                my $skipit = $1;
+                if(defined $skipit && $skipit eq lc 'no') {
+                    $test->{'skip'} = 1;
+                }
+                $test->{'loop'} = defined $2 ? [ split / / => $2 ] : [];
                 ++$testcount;
                 $test->{'test_start_line'} = $row;
                 $test->{'test_number'} = $testcount;
@@ -154,11 +167,40 @@ sub parse {
         }
     }
     push @{ $info->{'tests'} } => $test if scalar @{ $test->{'lines_template'} };
-    @{ $info->{'tests'} } = grep { !$_->{'skip'} } @{ $info->{'tests'} };
+    $self->_add_test($info, $test);
 
     $self->structure($info);
 
     return $self;
+}
+
+sub _add_test {
+    my $self = shift;
+    my $info = shift;
+    my $test = shift;
+    use Data::Dumper 'Dumper';
+
+    #* Nothing to test
+    return if !scalar @{ $test->{'lines_template'} } || $test->{'skip'};
+
+    #* No loop, just add it
+    if(!scalar @{ $test->{'loop'} }) {
+        push @{ $info->{'tests'} } => $test;
+        return;
+    }
+
+    foreach my $var (@{ $test->{'loop'} }) {
+        my $copy = dclone $test;
+
+        map { $_ =~ s{\[var\]}{$var}g } @{ $copy->{'lines_template'} };
+        map { $_ =~ s{\[var\]}{$var}g } @{ $copy->{'lines_expected'} };
+        $copy->{'loop_variable'} = $var;
+        push @{ $info->{'tests'} } => $copy;
+    }
+    return;
+
+
+
 }
 
 sub _reset_test {
@@ -172,6 +214,8 @@ sub _reset_test {
         test_number => undef,
         test_start_line => undef,
         test_name => undef,
+        loop => [],
+        loop_variable => undef,
     };
 }
 
@@ -236,6 +280,7 @@ Returns a string that is suitable to put in a L<Test::More> test file.
 
 Given a file (C<metacpan-1.mojo>) that looks like this:
 
+
     # Code here
 
     ==test==
@@ -246,12 +291,12 @@ Given a file (C<metacpan-1.mojo>) that looks like this:
         <a href="http://www.metacpan.org/">MetaCPAN</a>
     --e--
 
-    ==test==
+    ==test loop(first name)==
     --t--
-        %= text_field username => placeholder => 'Enter name'
+        %= text_field username => placeholder => '[var]'
     --t--
     --e--
-        <input name="username" placeholder="Enter name" type="text" />
+        <input name="username" placeholder="[var]" type="text" />
     --e--
 
     ==no test==
@@ -262,69 +307,109 @@ Given a file (C<metacpan-1.mojo>) that looks like this:
         <input name="username" placeholder="Not tested" type="text" />
     --e--
 
-(Note the C<no test> on the third test.)
+    ==test==
+    --t--
+
+    --t--
+
+    --e--
+
+    --e--
+
+C<loop(first name)> on the second test means there is one test generated where C<[var]> is replaced with C<first> and one where it is replaced with C<name>.
+
+C<no test> on the third test means it is skipped.
 
 Running C<$self-E<gt>parse> will fill C<$self-E<gt>structure> with:
 
     {
-        head_lines => ['',
-                       '# Code here',
-                       '',
-                       ''
-                      ],
+        head_lines => ['', '# Code here', '', '' ],
         tests => [
-                    {
-                        test_number => 1,
-                        test_name => 'metacpan_1_1',
-                        test_start_line => 4,
-                        lines_before => [''],
-                        lines_template => [ "%= link_to 'MetaCPAN', 'http://www.metacpan.org/" ],
-                        lines_between => [''],
-                        lines_expected => [ '<a href="http://www.metacpan.org/">MetaCPAN</a>' ],
-                        lines_after => ['',''],
-                    },
-                    {
-                       test_number => 2,
-                       test_name => 'metacpan_1_2',
-                       test_start_line => 12,
-                       lines_before => [''],
-                       lines_template => [ "%= text_field username => placeholder => 'Enter name'"" ],
-                       lines_between => [''],
-                       lines_expected => ['<input name="username" placeholder="Enter name" type="text" /> '],
-                       lines_after => [],
-                    }
-                ],
-        };
+            {
+                lines_after => ['', ''],
+                lines_before => [''],
+                lines_between => [''],
+                lines_expected => [ '    <a href="http://www.metacpan.org/">MetaCPAN</a>' ],
+                lines_template => [ "    %= link_to 'MetaCPAN', 'http://www.metacpan.org/'" ],
+                loop => [],
+                loop_variable => undef,
+                test_name => 'test_1_1',
+                test_number => 1,
+                test_start_line => 4,
+            },
+            {
+                lines_after => ['', ''],
+                lines_before => [''],
+                lines_between => [''],
+                lines_expected => [ '    <input name="username" placeholder="first" type="text" />' ],
+                lines_template => [ "    %= text_field username => placeholder => 'first'" ],
+                loop => [ 'first', 'name' ],
+                loop_variable => 'first',
+                test_name => 'test_1_2',
+                test_number => 2,
+                test_start_line => 12,
+            },
+            {
+                lines_after => ['', ''],
+                lines_before => [''],
+                lines_between => [''],
+                lines_expected => [ '    <input name="username" placeholder="name" type="text" />' ],
+                lines_template => [ "    %= text_field username => placeholder => 'name'" ],
+                loop => [ 'first', 'name' ],
+                loop_variable => 'name',
+                test_name => 'test_1_2',
+                test_number => 2,
+                test_start_line => 12,
+            }
+        ]
+    }
 
 And C<$self-E<gt>flatten> returns:
 
     # Code here
 
-    my $expected_1 = qq{ <a href="http://www.metacpan.org/">MetaCPAN</a> };
+    #** test from test-1.mojo, line 4
 
-    get '/metacpan_1_1' => 'metacpan_1_1';
+    my $expected_test_1_1 = qq{     <a href="http://www.metacpan.org/">MetaCPAN</a> };
 
-    $test->get_ok('/metacpan_1_1')->status_is(200)->trimmed_content_is($expected_1, 'Matched trimmed content in metacpan-1.mojo, line 4');
+    get '/test_1_1' => 'test_1_1';
 
-    my $expected_2 = qq{ <input name="username" placeholder="Enter name" type="text" /> };
+    $test->get_ok('/test_1_1')->status_is(200)->trimmed_content_is($expected_test_1_1, 'Matched trimmed content in test-1.mojo, line 4');
 
-    get '/metacpan_1_2' => 'metacpan_1_2';
+    #** test from test-1.mojo, line 12, loop: first
 
-    $test->get_ok('/metacpan_1_2')->status_is(200)->trimmed_content_is($expected_2, 'Matched trimmed content in metacpan-1.mojo, line 12');
+    my $expected_test_1_2 = qq{     <input name="username" placeholder="first" type="text" /> };
+
+    get '/test_1_2' => 'test_1_2';
+
+    $test->get_ok('/test_1_2')->status_is(200)->trimmed_content_is($expected_test_1_2, 'Matched trimmed content in test-1.mojo, line 12, loop: first');
+
+    #** test from test-1.mojo, line 12, loop: name
+
+    my $expected_test_1_2 = qq{     <input name="username" placeholder="name" type="text" /> };
+
+    get '/test_1_2' => 'test_1_2';
+
+    $test->get_ok('/test_1_2')->status_is(200)->trimmed_content_is($expected_test_1_2, 'Matched trimmed content in test-1.mojo, line 12, loop: name');
 
     done_testing();
 
     __DATA__
 
-    @@ metacpan_1_1.html.ep
+    @@ test_1_1.html.ep
 
-    %= link_to 'MetaCPAN', 'http://www.metacpan.org/'
+        %= link_to 'MetaCPAN', 'http://www.metacpan.org/'
 
-    @@ metacpan_1_2.html.ep
+    @@ test_1_2.html.ep
 
-    %= text_field username => placeholder => 'Enter name'
+        %= text_field username => placeholder => 'first'
 
-And then all that remains is putting in a header. See L<Dist::Zilla::Plugin::Test::CreateFromMojoTemplates>.
+    @@ test_1_2.html.ep
+
+        %= text_field username => placeholder => 'name'
+
+
+The easiest way to is it is with L<Dist::Zilla::Plugin::Test::CreateFromMojoTemplates>.
 
 =head1 AUTHOR
 
@@ -338,7 +423,5 @@ Copyright 2014- Erik Carlsson
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.
-
-=head1 SEE ALSO
 
 =cut

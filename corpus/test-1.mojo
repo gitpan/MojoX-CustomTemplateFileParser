@@ -3,18 +3,26 @@
 
 ==test==
 --t--
-%= link_to 'MetaCPAN', 'http://www.metacpan.org/'
+    %= link_to 'MetaCPAN', 'http://www.metacpan.org/'
 --t--
 --e--
-<a href="http://www.metacpan.org/">MetaCPAN</a>
+    <a href="http://www.metacpan.org/">MetaCPAN</a>
 --e--
 
-==test==
+==test loop(first name)==
 --t--
-%= text_field username => placeholder => 'Enter name'
+    %= text_field username => placeholder => '[var]'
 --t--
 --e--
-<input name="username" placeholder="Enter name" type="text" />
+    <input name="username" placeholder="[var]" type="text" />
+--e--
+
+==no test==
+--t--
+    %= text_field username => placeholder => 'Not tested'
+--t--
+--e--
+    <input name="username" placeholder="Not tested" type="text" />
 --e--
 
 ==test==

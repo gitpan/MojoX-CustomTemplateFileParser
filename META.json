@@ -38,6 +38,7 @@
          "requires" : {
             "Mojolicious" : "5.00",
             "Path::Tiny" : "0.050",
+            "Storable" : "2.24",
             "perl" : "5.010"
          }
       },
@@ -61,7 +62,7 @@
          "web" : "https://github.com/Csson/p5-mojox-customtemplatefileparser"
       }
    },
-   "version" : "0.02",
+   "version" : "0.03",
    "x_contributors" : [
       "Erik Carlsson <info@code301.com>"
    ]
