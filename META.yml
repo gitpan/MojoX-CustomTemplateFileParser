@@ -27,11 +27,11 @@ requires:
   Mojolicious: '5.00'
   Path::Tiny: '0.050'
   Storable: '2.24'
-  perl: '5.010'
+  perl: v5.14.0
 resources:
   bugtracker: https://github.com/Csson/p5-mojox-customtemplatefileparser/issues
   homepage: https://github.com/Csson/p5-mojox-customtemplatefileparser
   repository: https://github.com/Csson/p5-mojox-customtemplatefileparser.git
-version: '0.04'
+version: '0.05'
 x_contributors:
   - 'Erik Carlsson <info@code301.com>'

@@ -30,7 +30,7 @@ my $expected = {
             lines_template => [ "    %= text_field username => placeholder => 'first'" ],
             loop => [ 'first', 'name' ],
             loop_variable => 'first',
-            test_name => 'test_1_2',
+            test_name => 'test_1_2_first',
             test_number => 2,
             test_start_line => 12,
         },
@@ -42,13 +42,12 @@ my $expected = {
             lines_template => [ "    %= text_field username => placeholder => 'name'" ],
             loop => [ 'first', 'name' ],
             loop_variable => 'name',
-            test_name => 'test_1_2',
+            test_name => 'test_1_2_name',
             test_number => 2,
             test_start_line => 12,
         }
     ]
-}
-;
+};
 
 cmp_deeply($found, $expected, "Parsed correctly") || warn Dumper $found;
 
