@@ -7,7 +7,7 @@ requires 'Storable', '2.24';
 on test => sub {
     requires 'Test::More', '0.96';
     requires 'Test::Deep', '0.110';
-    requires 'Data::Dumper', '2.130';
+    requires 'Data::Dump::Streamer', '2.37';
 };
 
 

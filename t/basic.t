@@ -1,7 +1,7 @@
 use strict;
 use Test::More;
 use Test::Deep;
-use Data::Dumper 'Dumper';
+use Data::Dump::Streamer 'Dumper';
 use MojoX::CustomTemplateFileParser;
 
 my $parser = MojoX::CustomTemplateFileParser->new(path => 'corpus/test-1.mojo');
@@ -56,6 +56,5 @@ my @test = ('test', 'test 2', 'test example', 'test example 3', 'no test', 'no t
 foreach my $testy (@test) {
    like("==$testy==", $test_start, $testy);
 }
-
 
 done_testing;
