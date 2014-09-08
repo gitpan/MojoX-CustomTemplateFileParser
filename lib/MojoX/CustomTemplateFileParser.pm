@@ -3,7 +3,7 @@ package MojoX::CustomTemplateFileParser;
 use strict;
 use warnings;
 use 5.10.1;
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 use Mojo::Base -base;
 use Path::Tiny();
@@ -62,10 +62,13 @@ sub exemplify {
     my @out = ();
 
     foreach my $test (@{ $tests_at_index }) {
-        push @out => @{ $test->{'lines_before'} }, @{ $test->{'lines_template'} }, @{ $test->{'lines_between'} }, @{ $test->{'lines_expected' } }, @{ $test->{'lines_after'} };
+        push @out => @{ $test->{'lines_before'} }, "\n", @{ $test->{'lines_template'} }, "\n", @{ $test->{'lines_between'} }, "\n", @{ $test->{'lines_expected' } }, "\n", @{ $test->{'lines_after'} };
     }
 
-    return join "\n" => @out;
+    my $out = join "\n" => @out;
+    $out =~ s{\n\n\n+}{$1\n\n}g;
+
+    return $out;
 
 }
 
