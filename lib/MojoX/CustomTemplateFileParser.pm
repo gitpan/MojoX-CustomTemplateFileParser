@@ -3,8 +3,9 @@ package MojoX::CustomTemplateFileParser;
 use strict;
 use warnings;
 use 5.10.1;
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
+use HTML::Entities;
 use Mojo::Base -base;
 use Path::Tiny();
 use Storable qw/dclone/;
@@ -54,19 +55,43 @@ sub flatten {
     return join ("\n\n" => @parsed) . "\n";
 }
 
+sub htmlify {
+    my $self = shift;
+
+    my @out = ();
+    my $tests = $self->structure->{'tests'};
+
+    foreach my $test (@{ $tests }) {
+        push @out => (qq{<div class="panel panel-default"><div class="panel-body">});
+        push @out => (@{ $test->{'lines_before'} }) if scalar @{ $test->{'lines_before'} };
+        push @out => ('<pre>', HTML::Entities::encode_entities(join("\n" => @{ $test->{'lines_template'} })), '</pre>');
+        push @out => (@{ $test->{'lines_between'} }) if scalar @{ $test->{'lines_between'} };
+        push @out => ('<pre>', HTML::Entities::encode_entities(join("\n" => @{ $test->{'lines_expected'} })), '</pre>');
+        push @out => (@{ $test->{'lines_after'} }, "<hr />") if scalar @{ $test->{'lines_after'} };
+        push @out => (@{ $test->{'lines_expected'} });
+        push @out => (qq{</div></div>});
+    }
+
+    return join '' => @out;
+}
+
+
 sub exemplify {
     my $self = shift;
     my $test_index = shift;
+    my $want_all_examples = shift || 0;
 
     my $tests_at_index = $self->test_index->{ $test_index };
     my @out = ();
 
+    TEST:
     foreach my $test (@{ $tests_at_index }) {
+        next TEST if $want_all_examples && !$test->{'is_example'};
         push @out => @{ $test->{'lines_before'} }, "\n", @{ $test->{'lines_template'} }, "\n", @{ $test->{'lines_between'} }, "\n", @{ $test->{'lines_expected' } }, "\n", @{ $test->{'lines_after'} };
     }
 
     my $out = join "\n" => @out;
-    $out =~ s{\n\n\n+}{$1\n\n}g;
+    $out =~ s{\n\n\n+}{\n\n}g;
 
     return $out;
 
@@ -78,7 +103,7 @@ sub parse {
     my @lines = split /\n/ => Path::Tiny::path($self->path)->slurp;
 
     # matches ==test== ==no test== ==test loop(a thing or two)== ==test example ==test 1== ==test example 2==
-    my $test_start = qr/==(?:(NO) )?TEST(?: loop\(([^)]+)\))?(?: EXAMPLE)?(?: (\d+))?==/i;
+    my $test_start = qr/==(?:(NO) )?TEST(?: loop\(([^)]+)\))?( EXAMPLE)?(?: (?:\d+))?==/i;
     my $template_separator = '--t--';
     my $expected_separator = '--e--';
 
@@ -100,20 +125,18 @@ sub parse {
 
         if($environment eq 'head') {
             if($line =~ $test_start) {
+
                 my $skipit = $1;
                 $test->{'loop'} = defined $2 ? [ split / / => $2 ] : [];
-                my $testnumber = $3;
-
                 $test = $self->_reset_test();
 
                 if(defined $skipit && $skipit eq lc 'no') {
                     $test->{'skip'} = $skipit;
                 }
 
-                $test->{'test_number'} = $testnumber;
-                ++$testcount;
-
                 push @{ $info->{'head_lines'} } => '';
+                $test->{'test_number'} = ++$testcount;
+                $test->{'is_example'} = defined $3 ? 1 : 0;;
                 $test->{'test_start_line'} = $row;
                 $test->{'test_number'} = $testcount;
                 $test->{'test_name'} = sprintf '%s_%s' => $baseurl, $testcount;
@@ -174,9 +197,9 @@ sub parse {
                     $test->{'skip'} = 1;
                 }
                 $test->{'loop'} = defined $2 ? [ split / / => $2 ] : [];
-                ++$testcount;
                 $test->{'test_start_line'} = $row;
-                $test->{'test_number'} = $testcount;
+                $test->{'test_number'} = ++$testcount;;
+                $test->{'is_example'} = $3 || 0;
                 $test->{'test_name'} = sprintf '%s_%s' => $baseurl, $testcount;
                 $environment = 'beginning';
 
@@ -235,6 +258,7 @@ sub _add_test {
 sub _reset_test {
     my $self = shift;
     return {
+        is_example => 0,
         lines_before => [],
         lines_template => [],
         lines_after => [],
@@ -351,12 +375,18 @@ C<loop(first name)> on the second test means there is one test generated where C
 
 C<no test> on the third test means it is skipped.
 
+
+B<$self-E<gt>parse>
+
+No arguments.
+
 Running C<$self-E<gt>parse> will fill C<$self-E<gt>structure> with:
 
     {
         head_lines => ['', '# Code here', '', '' ],
         tests => [
             {
+                is_example => 1,
                 lines_after => ['', ''],
                 lines_before => [''],
                 lines_between => [''],
@@ -369,6 +399,7 @@ Running C<$self-E<gt>parse> will fill C<$self-E<gt>structure> with:
                 test_start_line => 4,
             },
             {
+                is_example => 0,
                 lines_after => ['', ''],
                 lines_before => [''],
                 lines_between => [''],
@@ -381,6 +412,7 @@ Running C<$self-E<gt>parse> will fill C<$self-E<gt>structure> with:
                 test_start_line => 12,
             },
             {
+                is_example => 0,
                 lines_after => ['', ''],
                 lines_before => [''],
                 lines_between => [''],
@@ -394,6 +426,10 @@ Running C<$self-E<gt>parse> will fill C<$self-E<gt>structure> with:
             }
         ]
     }
+
+B<$self-E<gt>flatten()>
+
+No arguments.
 
 And C<$self-E<gt>flatten> returns:
 
@@ -443,13 +479,22 @@ And C<$self-E<gt>flatten> returns:
 The easiest way to put this to use is with L<Dist::Zilla::Plugin::Test::CreateFromMojoTemplates>.
 
 
+B<$self-E<gt>exemplify($testnumber, $only_if_example)>
+
 C<$self-E<gt>exemplify(1)> returns:
 
     %= link_to 'MetaCPAN', 'http://www.metacpan.org/'
 
     <a href="http://www.metacpan.org/">MetaCPAN</a>
 
-The easiest way to put that to use is with L<Dist::Zilla::Plugin::InsertExample::FromMojoTemplates>.
+The second argument is a boolean that only exemplify the test if it is marked as an example in the source file, by using C<==test example==>.
+
+The easiest way to put exemplify to use is with L<Dist::Zilla::Plugin::InsertExample::FromMojoTemplates>.
+
+
+B<$self-E<gt>htmlify()>
+
+This method returns all tests in the source file in a string ready to be put into an html file that can be used as an example file. It is currently hardcoded to use a L<Bootstrap|http://www.getbootstrap.com/> format.
 
 =head1 AUTHOR
 

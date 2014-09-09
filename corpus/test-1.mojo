@@ -1,7 +1,7 @@
 
 # Code here
 
-==test==
+==test example==
 --t--
     %= link_to 'MetaCPAN', 'http://www.metacpan.org/'
 --t--

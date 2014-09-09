@@ -11,6 +11,7 @@ my $expected = {
     head_lines => ['', '# Code here', '', '' ],
     tests => [
         {
+            is_example => 1,
             lines_after => ['', ''],
             lines_before => [''],
             lines_between => [''],
@@ -23,6 +24,7 @@ my $expected = {
             test_start_line => 4,
         },
         {
+            is_example => 0,
             lines_after => ['', ''],
             lines_before => [''],
             lines_between => [''],
@@ -35,6 +37,7 @@ my $expected = {
             test_start_line => 12,
         },
         {
+            is_example => 0,
             lines_after => ['', ''],
             lines_before => [''],
             lines_between => [''],
