@@ -3,7 +3,7 @@ package MojoX::CustomTemplateFileParser::Plugin::To::Pod;
 use strict;
 use warnings;
 use 5.10.1;
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 use Moose::Role;
 
@@ -20,29 +20,31 @@ sub to_pod {
         next TEST if $want_all_examples && !$test->{'is_example'};
 
         if(scalar @{ $test->{'lines_before'} }) {
-            push @out => '=begin html',
+            push @out => "\n", '=begin html', "\n",
                       '<p>', @{ $test->{'lines_before'} }, '</p>',
-                      '=end html',
+                      "\n", '=end html',
                       "\n";
         }
 
         push @out => @{ $test->{'lines_template'} }, "\n";
         if(scalar @{ $test->{'lines_between'} }) {
-            push @out => '=begin html',
+            push @out => '=begin html', "\n",
                       '<p>',@{ $test->{'lines_between'} }, '</p>',
-                      '=end html',
+                      "\n", '=end html',
                       "\n";
         }
         push @out => @{ $test->{'lines_expected' } }, "\n";
         if(scalar @{ $test->{'lines_after'} }) {
-            push @out => '=begin html',
+            push @out => '=begin html', "\n",
                       '<p>',@{ $test->{'lines_after'} }, '</p>',
-                      '=end html';
+                      "\n", '=end html', "\n";
         }
     }
 
     my $out = join "\n" => @out;
     $out =~ s{\n\n\n+}{\n\n}g;
+    $out =~ s{\n+=begin html\n+}{\n\n=begin html\n\n}g;
+    $out =~ s{\n+=end html\n+}{\n\n=end html\n\n}g;
 
     return $out;
 

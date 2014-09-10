@@ -21,7 +21,7 @@ get '/test_1_1' => 'test_1_1';
 $test->get_ok('/test_1_1')->status_is(200)->trimmed_content_is($expected_test_1_1, 'Matched trimmed content in test-1.mojo, line 4');
 
 
-#** test from test-1.mojo, line 12, loop: first
+#** test from test-1.mojo, line 15, loop: first
 
 my $expected_test_1_2_first_first = qq{
     <input name="username" placeholder="first" type="text" />
@@ -29,10 +29,10 @@ my $expected_test_1_2_first_first = qq{
 
 get '/test_1_2_first' => 'test_1_2_first';
 
-$test->get_ok('/test_1_2_first')->status_is(200)->trimmed_content_is($expected_test_1_2_first_first, 'Matched trimmed content in test-1.mojo, line 12, loop: first');
+$test->get_ok('/test_1_2_first')->status_is(200)->trimmed_content_is($expected_test_1_2_first_first, 'Matched trimmed content in test-1.mojo, line 15, loop: first');
 
 
-#** test from test-1.mojo, line 12, loop: name
+#** test from test-1.mojo, line 15, loop: name
 
 my $expected_test_1_2_name_name = qq{
     <input name="username" placeholder="name" type="text" />
@@ -40,7 +40,7 @@ my $expected_test_1_2_name_name = qq{
 
 get '/test_1_2_name' => 'test_1_2_name';
 
-$test->get_ok('/test_1_2_name')->status_is(200)->trimmed_content_is($expected_test_1_2_name_name, 'Matched trimmed content in test-1.mojo, line 12, loop: name');
+$test->get_ok('/test_1_2_name')->status_is(200)->trimmed_content_is($expected_test_1_2_name_name, 'Matched trimmed content in test-1.mojo, line 15, loop: name');
 
 done_testing();
 

@@ -1,15 +1,19 @@
 Revision history for MojoX-CustomTemplateFileParser
 
+0.10  2014-09-10 21:42:50 CEST
+    - Bugfix: Lines meant to be parsed between test and expected could end up in expected
+    - Bugfix: Malformed POD output near =begin/end html
+
 0.09  2014-09-10 16:50:23 CEST
-    - Created a plugin architecture which allows for easy customization of output.
+    - Created a plugin architecture which allows for easy customization of output
     - Moved flatten() into ::Plugin::To::Test
     - Moved exemplify() into ::Plugin::To::Pod
     - Moved htmlify() into ::Plugin::To::Html
-    - Removed parse(). Now parsing takes place at object creation.
+    - Removed parse(). Now parsing takes place at object creation
     - Changed to Moose, thanks to MooseX::Object::Pluggable
 
 0.08  2014-09-09 23:28:44 CEST
-    - add support for choosing to exemplify a test only if it is
+    - Add support for choosing to exemplify a test only if it is
       marked as an example in the source file
     - Fixed unitialized warning
     - Added htmlify() which turns the source file into html

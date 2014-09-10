@@ -3,7 +3,7 @@ package MojoX::CustomTemplateFileParser::Plugin::To::Test;
 use strict;
 use warnings;
 use 5.10.1;
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 use Moose::Role;
 

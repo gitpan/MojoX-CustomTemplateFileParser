@@ -16,9 +16,12 @@ my $expected = {
            tests      => [
                            {
                              is_example      => 1,
-                             lines_after     => [],
-                             lines_before    => [],
-                             lines_between   => [],
+                             lines_after     => [
+                                                  'Text after expected.',
+                                                  ''
+                                                ],
+                             lines_before    => [ 'Text before the test' ],
+                             lines_between   => [ 'Text between template and expected' ],
                              lines_expected  => [
                                                   '',
                                                   '    <a href="http://www.metacpan.org/">MetaCPAN</a>',
@@ -38,7 +41,7 @@ my $expected = {
                            {
                              is_example      => 0,
                              lines_after     => [],
-                             lines_before    => [],
+                             lines_before    => [ 'More text' ],
                              lines_between   => [],
                              lines_expected  => [
                                                   '',
@@ -57,12 +60,12 @@ my $expected = {
                              loop_variable   => 'first',
                              test_name       => 'test_1_2_first',
                              test_number     => 2,
-                             test_start_line => 12
+                             test_start_line => 15
                            },
                            {
                              is_example      => 0,
                              lines_after     => [],
-                             lines_before    => [],
+                             lines_before    => [ 'More text' ],
                              lines_between   => [],
                              lines_expected  => [
                                                   '',
@@ -81,7 +84,7 @@ my $expected = {
                              loop_variable   => 'name',
                              test_name       => 'test_1_2_name',
                              test_number     => 2,
-                             test_start_line => 12
+                             test_start_line => 15
                            }
                          ]
          };

@@ -3,7 +3,7 @@ package MojoX::CustomTemplateFileParser;
 use strict;
 use warnings;
 use 5.10.1;
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 use Moose;
 with 'MooseX::Object::Pluggable';
@@ -120,7 +120,7 @@ sub _parse {
                 $environment = 'expected';
                 next LINE;
             }
-            push @{ $test->{'lines_expected'} } => $line;
+            push @{ $test->{'lines_between'} } => $line;
             next LINE;
         }
         if($environment eq 'expected') {
