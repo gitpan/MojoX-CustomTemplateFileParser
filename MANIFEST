@@ -10,6 +10,13 @@ corpus/test-1.mojo
 cpanfile
 dist.ini
 lib/MojoX/CustomTemplateFileParser.pm
+lib/MojoX/CustomTemplateFileParser/Plugin/To/Html.pm
+lib/MojoX/CustomTemplateFileParser/Plugin/To/Pod.pm
+lib/MojoX/CustomTemplateFileParser/Plugin/To/Test.pm
+t/1-structure.t
+t/2-plugin-totest.t
+t/3-plugin-topod.t
+t/4-plugin-tohtml.t
+t/author-no-tabs.t
 t/author-test-eol.t
-t/basic.t
 t/release-pod-syntax.t

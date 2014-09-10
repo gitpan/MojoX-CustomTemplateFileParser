@@ -3,101 +3,46 @@ package MojoX::CustomTemplateFileParser;
 use strict;
 use warnings;
 use 5.10.1;
-our $VERSION = '0.08';
+our $VERSION = '0.09';
+
+use Moose;
+with 'MooseX::Object::Pluggable';
 
 use HTML::Entities;
-use Mojo::Base -base;
 use Path::Tiny();
 use Storable qw/dclone/;
 
-has path => undef;
-has structure => sub { { } };
-has test_index => sub { { } };
+has path => (
+    is => 'ro',
+    isa => 'Str',
+    required => 1,
+);
+has structure => (
+    is => 'rw',
+    isa => 'HashRef',
+    default => sub { { } },
+);
+has test_index => (
+    is => 'rw',
+    isa => 'HashRef',
+    default => sub { { } },
+);
+has output => (
+    is => 'ro',
+    isa => 'ArrayRef',
+    default => sub { [ ] },
+);
 
-sub flatten {
+sub BUILD {
     my $self = shift;
-    my $baseurl = $self->_get_baseurl;
-    my $filename = $self->_get_filename;
+    $self->_parse;
 
-    if(!scalar keys %{ $self->structure }) {
-        $self->parse;
+    foreach my $plugin (@{ $self->output } ) {
+        $self->load_plugin("To::$plugin");
     }
-    my $info = $self->structure;
-
-    my @parsed = join "\n" => @{ $info->{'head_lines'} };
-
-    TEST:
-    foreach my $test (@{ $info->{'tests'} }) {
-        next TEST if !scalar @{ $test->{'lines_template'} };
-
-        my $expected_var = sprintf '$expected_%s%s' => $test->{'test_name'}, ($test->{'loop_variable'} ? "_$test->{'loop_variable'}" : '');
-
-        push @parsed => "#** test from $filename, line $test->{'test_start_line'}" . ($test->{'loop_variable'} ? ", loop: $test->{'loop_variable'}" : '');
-        push @parsed => sprintf 'my %s = qq{ %s };' => $expected_var, join "\n" => @{ $test->{'lines_expected'} };
-
-        push @parsed => sprintf q{get '/%s' => '%s';} => $test->{'test_name'}, $test->{'test_name'};
-        push @parsed => sprintf q{$test->get_ok('/%s')->status_is(200)->trimmed_content_is(%s, '%s');}
-                                => $test->{'test_name'}, $expected_var, sprintf qq{Matched trimmed content in $filename, line $test->{'test_start_line'}%s}
-                                                                                => $test->{'loop_variable'} ? ", loop: $test->{'loop_variable'}" : '';
-    }
-
-    push @parsed => 'done_testing();';
-    push @parsed => '__DATA__';
-
-
-    foreach my $test (@{ $info->{'tests'} }) {
-        next TEST if !scalar @{ $test->{'lines_template'} };
-
-        push @parsed => sprintf '@@ %s.html.ep' => $test->{'test_name'};
-        push @parsed => join "\n" => @{ $test->{'lines_template'} };
-    }
-
-    return join ("\n\n" => @parsed) . "\n";
 }
 
-sub htmlify {
-    my $self = shift;
-
-    my @out = ();
-    my $tests = $self->structure->{'tests'};
-
-    foreach my $test (@{ $tests }) {
-        push @out => (qq{<div class="panel panel-default"><div class="panel-body">});
-        push @out => (@{ $test->{'lines_before'} }) if scalar @{ $test->{'lines_before'} };
-        push @out => ('<pre>', HTML::Entities::encode_entities(join("\n" => @{ $test->{'lines_template'} })), '</pre>');
-        push @out => (@{ $test->{'lines_between'} }) if scalar @{ $test->{'lines_between'} };
-        push @out => ('<pre>', HTML::Entities::encode_entities(join("\n" => @{ $test->{'lines_expected'} })), '</pre>');
-        push @out => (@{ $test->{'lines_after'} }, "<hr />") if scalar @{ $test->{'lines_after'} };
-        push @out => (@{ $test->{'lines_expected'} });
-        push @out => (qq{</div></div>});
-    }
-
-    return join '' => @out;
-}
-
-
-sub exemplify {
-    my $self = shift;
-    my $test_index = shift;
-    my $want_all_examples = shift || 0;
-
-    my $tests_at_index = $self->test_index->{ $test_index };
-    my @out = ();
-
-    TEST:
-    foreach my $test (@{ $tests_at_index }) {
-        next TEST if $want_all_examples && !$test->{'is_example'};
-        push @out => @{ $test->{'lines_before'} }, "\n", @{ $test->{'lines_template'} }, "\n", @{ $test->{'lines_between'} }, "\n", @{ $test->{'lines_expected' } }, "\n", @{ $test->{'lines_after'} };
-    }
-
-    my $out = join "\n" => @out;
-    $out =~ s{\n\n\n+}{\n\n}g;
-
-    return $out;
-
-}
-
-sub parse {
+sub _parse {
     my $self = shift;
     my $baseurl = $self->_get_baseurl;
     my @lines = split /\n/ => Path::Tiny::path($self->path)->slurp;
@@ -149,7 +94,6 @@ sub parse {
         }
         if($environment eq 'beginning') {
             if($line eq $template_separator) {
-                push @{ $test->{'lines_before'} } => '';
                 $environment = 'template';
                 next LINE;
             }
@@ -158,7 +102,10 @@ sub parse {
         }
         if($environment eq 'template') {
             if($line eq $template_separator) {
-                # No need to push empty line to the template
+                if(scalar @{ $test->{'lines_template'} }) {
+                    unshift @{ $test->{'lines_template'} } => '';
+                    push @{ $test->{'lines_template'} } => '';
+                }
                 $environment = 'between';
                 next LINE;
             }
@@ -170,7 +117,6 @@ sub parse {
         }
         if($environment eq 'between') {
             if($line eq $expected_separator) {
-                push @{ $test->{'lines_between'} } => '';
                 $environment = 'expected';
                 next LINE;
             }
@@ -180,6 +126,10 @@ sub parse {
         if($environment eq 'expected') {
             if($line eq $expected_separator) {
                 $environment = 'ending';
+                if(scalar @{ $test->{'lines_expected'} }) {
+                    unshift @{ $test->{'lines_expected'} } => '';
+                    push @{ $test->{'lines_expected'} } => '';
+                }
                 next LINE;
             }
             push @{ $test->{'lines_expected'} } => $line;
@@ -187,8 +137,6 @@ sub parse {
         }
         if($environment eq 'ending') {
             if($line =~ $test_start) {
-                push @{ $test->{'lines_after'} } => '';
-
                 $self->_add_test($info, $test);
 
                 $test = $self->_reset_test();
@@ -205,7 +153,7 @@ sub parse {
 
                 next LINE;
             }
-            push @{ $test->{'lines_after'} } => $line;
+            push @{ $test->{'lines_after'} } => $line if scalar @{ $test->{'lines_after'} } || $line !~ m{^\s*$};
             next LINE;
         }
     }
@@ -250,8 +198,6 @@ sub _add_test {
         push @{ $info->{'indexed'}{ $copy->{'test_number'} } } => $copy;
     }
     return;
-
-
 
 }
 
@@ -299,9 +245,11 @@ MojoX::CustomTemplateFileParser - Parses a custom Mojo template file format
 
   use MojoX::CustomTemplateFileParser;
 
-  my $content = MojoX::CustomTemplateFileParser->new(path => '/path/to/file.mojo')->parse->flatten;
+  my $parser = MojoX::CustomTemplateFileParser->new(path => '/path/to/file.mojo', output => [qw/Html Pod Test]);
 
-  print $content;
+  print $parser->to_html;
+  print $parser->to_pod;
+  print $parser->to_test;
 
 =head1 STATUS
 
@@ -311,7 +259,7 @@ Unstable.
 
 MojoX::CustomTemplateFileParser parses files containing L<Mojo::Templates|Mojo::Template> mixed with the expected rendering.
 
-The parsing creates a data structure that also can be dumped into a string ready to be put in a L<Test::More> file.
+The parsing creates a data structure that can be output in various formats using plugins.
 
 Its purpose is to facilitate development of tag helpers.
 
@@ -319,182 +267,39 @@ Its purpose is to facilitate development of tag helpers.
 
 B<C<path>>
 
-The only argument given to the constructor is the path to the file that should be parsed.
+The path to the file that should be parsed. Parsing occurs at object creation.
+
+B<C<output>>
+
+An array reference to plugins in the C<::Plugin::To> namespace.
 
 =head2 Methods
 
-B<C<$self-E<gt>parse>>
+No public methods. See plugins for output options.
 
-Parses the file given in C<path>. After parsing the structure is available in C<$self-E<gt>structure>.
+=head1 PLUGINS
 
-B<C<$self-E<gt>flatten>>
+Currently available plugins:
 
-Returns a string that is suitable to put in a L<Test::More> test file.
+=over 4
 
-=head1 Example
+=item * L<MojoX::CustomTemplateFileParser::To::Html>
 
-Given a file (C<metacpan-1.mojo>) that looks like this:
+=item * L<MojoX::CustomTemplateFileParser::To::Pod>
 
+=item * L<MojoX::CustomTemplateFileParser::To::Test>
 
-    # Code here
+=back
 
-    ==test==
-    --t--
-        %= link_to 'MetaCPAN', 'http://www.metacpan.org/'
-    --t--
-    --e--
-        <a href="http://www.metacpan.org/">MetaCPAN</a>
-    --e--
+=head1 SEE ALSO
 
-    ==test loop(first name)==
-    --t--
-        %= text_field username => placeholder => '[var]'
-    --t--
-    --e--
-        <input name="username" placeholder="[var]" type="text" />
-    --e--
+=over 4
 
-    ==no test==
-    --t--
-        %= text_field username => placeholder => 'Not tested'
-    --t--
-    --e--
-        <input name="username" placeholder="Not tested" type="text" />
-    --e--
+=item * L<Dist::Zilla::Plugin::Test::CreateFromMojoTemplates>
 
-    ==test==
-    --t--
+=item * L<Dist::Zilla::Plugin::InsertExample::FromMojoTemplates>
 
-    --t--
-
-    --e--
-
-    --e--
-
-C<loop(first name)> on the second test means there is one test generated where C<[var]> is replaced with C<first> and one where it is replaced with C<name>.
-
-C<no test> on the third test means it is skipped.
-
-
-B<$self-E<gt>parse>
-
-No arguments.
-
-Running C<$self-E<gt>parse> will fill C<$self-E<gt>structure> with:
-
-    {
-        head_lines => ['', '# Code here', '', '' ],
-        tests => [
-            {
-                is_example => 1,
-                lines_after => ['', ''],
-                lines_before => [''],
-                lines_between => [''],
-                lines_expected => [ '    <a href="http://www.metacpan.org/">MetaCPAN</a>' ],
-                lines_template => [ "    %= link_to 'MetaCPAN', 'http://www.metacpan.org/'" ],
-                loop => [],
-                loop_variable => undef,
-                test_name => 'test_1_1',
-                test_number => 1,
-                test_start_line => 4,
-            },
-            {
-                is_example => 0,
-                lines_after => ['', ''],
-                lines_before => [''],
-                lines_between => [''],
-                lines_expected => [ '    <input name="username" placeholder="first" type="text" />' ],
-                lines_template => [ "    %= text_field username => placeholder => 'first'" ],
-                loop => [ 'first', 'name' ],
-                loop_variable => 'first',
-                test_name => 'test_1_2_first',
-                test_number => 2,
-                test_start_line => 12,
-            },
-            {
-                is_example => 0,
-                lines_after => ['', ''],
-                lines_before => [''],
-                lines_between => [''],
-                lines_expected => [ '    <input name="username" placeholder="name" type="text" />' ],
-                lines_template => [ "    %= text_field username => placeholder => 'name'" ],
-                loop => [ 'first', 'name' ],
-                loop_variable => 'name',
-                test_name => 'test_1_2_name',
-                test_number => 2,
-                test_start_line => 12,
-            }
-        ]
-    }
-
-B<$self-E<gt>flatten()>
-
-No arguments.
-
-And C<$self-E<gt>flatten> returns:
-
-    # Code here
-
-    #** test from test-1.mojo, line 4
-
-    my $expected_test_1_1 = qq{     <a href="http://www.metacpan.org/">MetaCPAN</a> };
-
-    get '/test_1_1' => 'test_1_1';
-
-    $test->get_ok('/test_1_1')->status_is(200)->trimmed_content_is($expected_test_1_1, 'Matched trimmed content in test-1.mojo, line 4');
-
-    #** test from test-1.mojo, line 12, loop: first
-
-    my $expected_test_1_2 = qq{     <input name="username" placeholder="first" type="text" /> };
-
-    get '/test_1_2' => 'test_1_2';
-
-    $test->get_ok('/test_1_2')->status_is(200)->trimmed_content_is($expected_test_1_2, 'Matched trimmed content in test-1.mojo, line 12, loop: first');
-
-    #** test from test-1.mojo, line 12, loop: name
-
-    my $expected_test_1_2 = qq{     <input name="username" placeholder="name" type="text" /> };
-
-    get '/test_1_2' => 'test_1_2';
-
-    $test->get_ok('/test_1_2')->status_is(200)->trimmed_content_is($expected_test_1_2, 'Matched trimmed content in test-1.mojo, line 12, loop: name');
-
-    done_testing();
-
-    __DATA__
-
-    @@ test_1_1.html.ep
-
-        %= link_to 'MetaCPAN', 'http://www.metacpan.org/'
-
-    @@ test_1_2.html.ep
-
-        %= text_field username => placeholder => 'first'
-
-    @@ test_1_2.html.ep
-
-        %= text_field username => placeholder => 'name'
-
-
-The easiest way to put this to use is with L<Dist::Zilla::Plugin::Test::CreateFromMojoTemplates>.
-
-
-B<$self-E<gt>exemplify($testnumber, $only_if_example)>
-
-C<$self-E<gt>exemplify(1)> returns:
-
-    %= link_to 'MetaCPAN', 'http://www.metacpan.org/'
-
-    <a href="http://www.metacpan.org/">MetaCPAN</a>
-
-The second argument is a boolean that only exemplify the test if it is marked as an example in the source file, by using C<==test example==>.
-
-The easiest way to put exemplify to use is with L<Dist::Zilla::Plugin::InsertExample::FromMojoTemplates>.
-
-
-B<$self-E<gt>htmlify()>
-
-This method returns all tests in the source file in a string ready to be put into an html file that can be used as an example file. It is currently hardcoded to use a L<Bootstrap|http://www.getbootstrap.com/> format.
+=back
 
 =head1 AUTHOR
 
